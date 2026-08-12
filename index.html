@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>決密槍戰 - Socket.io 雲端多人連線版</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
+        #instructions {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; text-align: center; font-size: 18px; background: rgba(0, 0, 0, 0.9);
+            padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(255,51,102,0.4);
+            border: 2px solid #ff3366; z-index: 10; max-width: 400px; width: 90%; user-select: none;
+        }
+        #instructions h2 { margin-top: 0; color: #ff3366; letter-spacing: 3px; font-size: 26px; }
+        .weapon-select { margin: 15px 0; text-align: left; background: rgba(255, 255, 255, 0.05); padding: 10px; border-radius: 8px; }
+        .weapon-select label { display: block; margin-bottom: 5px; color: #00ffcc; font-weight: bold; }
+        .weapon-select select { width: 100%; padding: 8px; background: #111; color: white; border: 1px solid #00ffcc; border-radius: 5px; font-size: 16px; }
+        #start-btn { background: #ff3366; color: #fff; border: none; padding: 12px 25px; font-size: 18px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; transition: 0.2s; }
+        #start-btn:hover { background: #e02b55; }
+
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 16px; height: 16px; pointer-events: none; display: none;
+        }
+        #crosshair::before, #crosshair::after { content: ''; position: absolute; background-color: #fff; box-shadow: 0 0 2px #000; }
+        #crosshair::before { top: 7px; left: 0; width: 16px; height: 2px; }
+        #crosshair::after { top: 0; left: 7px; width: 2px; height: 16px; }
+
+        #hud {
+            position: absolute; top: 20px; left: 20px; color: #00ffcc; font-size: 18px; font-weight: bold;
+            background: rgba(0, 0, 0, 0.6); padding: 12px 18px; border-radius: 10px; border: 2px solid #00ffcc;
+            display: none; z-index: 5; user-select: none; line-height: 1.6;
+        }
+        #bomb-status-bar {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            color: #ff3366; font-size: 22px; font-weight: bold; background: rgba(0,0,0,0.8);
+            padding: 10px 20px; border-radius: 8px; border: 2px solid #ff3366; display: none; z-index: 5; text-align: center;
+        }
+        #interaction-prompt {
+            position: absolute; bottom: 25%; left: 50%; transform: translateX(-50%);
+            color: #fff; background: rgba(0,0,0,0.7); padding: 8px 16px; border-radius: 5px; border: 1px solid #fff;
+            display: none; font-size: 16px; z-index: 5; pointer-events: none;
+        }
+        #progress-container {
+            position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%);
+            width: 200px; height: 20px; background: rgba(0,0,0,0.6); border: 2px solid #00ffcc;
+            border-radius: 10px; display: none; z-index: 5; overflow: hidden;
+        }
+        #progress-bar { width: 0%; height: 100%; background: #00ffcc; transition: width 0.05s linear; }
+        #damage-flash { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 0, 0, 0); pointer-events: none; transition: background 0.1s ease; z-index: 8; }
+    </style>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+    <div id="crosshair"></div>
+    <div id="damage-flash"></div>
+    
+    <div id="hud">
+        生命值: <span id="hp">100</span><br>
+        擊殺數: <span id="kills">0</span><br>
+        線上狀態: <span id="connection-status" style="color:yellow;">連線中...</span>
+    </div>
+
+    <div id="bomb-status-bar">炸彈狀態: 未安裝</div>
+    <div id="interaction-prompt">按住 [E] 鍵安裝/拆除炸彈</div>
+    
+    <div id="progress-container">
+        <div id="progress-bar"></div>
+    </div>
+
+    <div id="instructions">
+        <h2>決密槍戰 - 雲端伺服器版</h2>
+        <div class="weapon-select">
+            <label for="weapon-select">選擇你的武器：</label>
+            <select id="weapon-select">
+                <option value="ak47">AK-47 (全自動步槍)</option>
+                <option value="g18">G18 (全自動手槍)</option>
+            </select>
+        </div>
+        <p style="font-size:13px; color:#ccc;"><b>玩法：</b>透過伺服器連線！常按左鍵連發，走到 A 點按 **E 鍵** 拆裝炸彈。<br><b>操作：</b>WASD 移動 | 滑鼠視角 | 長按左鍵連發</p>
+        <button id="start-btn">進入戰場</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+        const socket = io();
+
+        socket.on('connect', () => {
+            document.getElementById('connection-status').innerText = "已連線";
+            document.getElementById('connection-status').style.color = "#00ffcc";
+        });
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0c1a11);
+        scene.fog = new THREE.Fog(0x0c1a11, 10, 70);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        document.body.appendChild(renderer.domElement);
+
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+        scene.add(new THREE.AmbientLight(0xddeeff, 0.4));
+        const directionalLight = new THREE.DirectionalLight(0xffffee, 1.6);
+        directionalLight.position.set(15, 25, 15);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        // 主角玩家
+        const player = new THREE.Mesh(
+            new THREE.BoxGeometry(1, 1.8, 1),
+            new THREE.MeshStandardMaterial({ color: 0x00aaff, roughness: 0.3, metalness: 0.6 })
+        );
+        player.position.set(0, 0.9, 0);
+        scene.add(player);
+        camera.position.set(0, 0.7, 0);
+        player.add(camera);
+
+        const gunGroup = new THREE.Group();
+        gunGroup.position.set(0.3, -0.25, -0.6);
+        camera.add(gunGroup);
+
+        const loader = new GLTFLoader();
+        function loadSelectedWeapon(weaponType) {
+            while(gunGroup.children.length > 0) gunGroup.remove(gunGroup.children[0]);
+            let modelUrl = (weaponType === 'ak47') ? 
+                'https://raw.githubusercontent.com/lucas19yang-a11y/no/main/ak-47__high_poly__pbr__fbx.glb' : 
+                'https://raw.githubusercontent.com/lucas19yang-a11y/-/main/g18.glb';
+
+            loader.load(modelUrl, (gltf) => {
+                const gunModel = gltf.scene;
+                gunModel.scale.set(0.4, 0.4, 0.4);
+                if (weaponType === 'ak47') gunModel.rotation.y = Math.PI / 2;
+                else gunModel.rotation.y = Math.PI;
+                gunGroup.add(gunModel);
+            }, undefined, () => {
+                gunGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.8), new THREE.MeshStandardMaterial({ color: 0x222225 })));
+            });
+        }
+
+        // 炸彈區與 C4
+        const bombSite = new THREE.Mesh(
+            new THREE.CylinderGeometry(4, 4, 0.1, 32),
+            new THREE.MeshStandardMaterial({ color: 0xff3366, emissive: 0xff3366, emissiveIntensity: 0.5, transparent: true, opacity: 0.6 })
+        );
+        bombSite.position.set(0, 0.05, -15);
+        scene.add(bombSite);
+
+        const c4Bomb = new THREE.Mesh(
+            new THREE.BoxGeometry(0.8, 0.4, 0.6),
+            new THREE.MeshStandardMaterial({ color: 0xff0000, metalness: 0.8 })
+        );
+        c4Bomb.position.set(0, 0.3, -15);
+        c4Bomb.visible = false;
+        scene.add(c4Bomb);
+
+        const obstacles = [];
+        const otherPlayers = {};
+        const bullets = [];
+        let playerHp = 100;
+        let playerKills = 0;
+        let isGameOver = false;
+        let bombPlanted = false;
+        let actionProgress = 0.0;
+        let isInteracting = false;
+
+        let isFiring = false;
+        let lastFireTime = 0;
+        const fireInterval = 120;
+
+        // 地面與障礙物
+        const textureLoader = new THREE.TextureLoader();
+        const grassMap = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/terrain/grasslight-big.jpg');
+        grassMap.wrapS = grassMap.wrapT = THREE.RepeatWrapping;
+        grassMap.repeat.set(40, 40);
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(150, 150), new THREE.MeshStandardMaterial({ map: grassMap }));
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        for (let i = 0; i < 30; i++) {
+            const obs = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 3), new THREE.MeshStandardMaterial({ color: 0x4a5d4e }));
+            const x = (Math.random() - 0.5) * 80, z = (Math.random() - 0.5) * 80;
+            if (Math.abs(x) < 8 && Math.abs(z) < 8) continue;
+            obs.position.set(x, 1.5, z);
+            scene.add(obs);
+            obstacles.push(obs);
+        }
+
+        // Socket.io 接收伺服器同步事件
+        socket.on('currentPlayers', (serverPlayers) => {
+            for (let id in serverPlayers) {
+                if (id === socket.id) {
+                    player.position.set(serverPlayers[id].x, serverPlayers[id].y, serverPlayers[id].z);
+                } else if (!otherPlayers[id]) {
+                    const op = new THREE.Mesh(
+                        new THREE.BoxGeometry(1, 1.8, 1),
+                        new THREE.MeshStandardMaterial({ color: 0xd93855 })
+                    );
+                    scene.add(op);
+                    otherPlayers[id] = op;
+                }
+            }
+        });
+
+        socket.on('playerMoved', (data) => {
+            if (otherPlayers[data.id]) {
+                otherPlayers[data.id].position.set(data.x, data.y, data.z);
+                otherPlayers[data.id].rotation.y = data.ry;
+            }
+        });
+
+        socket.on('playerShot', (data) => {
+            createBullet(new THREE.Vector3(data.px, data.py, data.pz), new THREE.Vector3(data.dx, data.dy, data.dz), false);
+        });
+
+        socket.on('getHit', (newHp) => {
+            playerHp = newHp;
+            document.getElementById('hp').innerText = playerHp;
+            const flash = document.getElementById('damage-flash');
+            flash.style.background = 'rgba(255, 0, 0, 0.4)';
+            setTimeout(() => flash.style.background = 'rgba(255, 0, 0, 0)', 150);
+        });
+
+        socket.on('die', () => {
+            if (!isGameOver) {
+                isGameOver = true;
+                alert("你被擊敗了！");
+                location.reload();
+            }
+        });
+
+        socket.on('bombStatus', (status) => {
+            bombPlanted = status;
+            c4Bomb.visible = bombPlanted;
+            document.getElementById('bomb-status-bar').innerText = bombPlanted ? "⚠️ 炸彈已安裝！請前往拆除！" : "炸彈狀態: 未安裝";
+        });
+
+        socket.on('removePlayer', (id) => {
+            if (otherPlayers[id]) {
+                scene.remove(otherPlayers[id]);
+                delete otherPlayers[id];
+            }
+        });
+
+        // 射擊子彈
+        function shootGun() {
+            if (!gameStarted || isGameOver) return;
+
+            const bulletGeo = new THREE.SphereGeometry(0.1, 8, 8);
+            const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const bulletMesh = new THREE.Mesh(bulletGeo, bulletMat);
+
+            const worldPos = new THREE.Vector3();
+            camera.getWorldPosition(worldPos);
+            bulletMesh.position.copy(worldPos);
+
+            const direction = new THREE.Vector3(0, 0, -1);
+            direction.applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
+
+            scene.add(bulletMesh);
+            bullets.push({ mesh: bulletMesh, dir: direction, life: 2.0, isMine: true });
+
+            socket.emit('playerShoot', {
+                px: worldPos.x, py: worldPos.y, pz: worldPos.z,
+                dx: direction.x, dy: direction.y, dz: direction.z
+            });
+
+            gunGroup.position.z += 0.12;
+            setTimeout(() => gunGroup.position.z = -0.6, 60);
+        }
+
+        function createBullet(pos, dir, isMine) {
+            const bulletGeo = new THREE.SphereGeometry(0.1, 8, 8);
+            const bulletMat = new THREE.MeshBasicMaterial({ color: isMine ? 0xffff00 : 0xff3300 });
+            const bulletMesh = new THREE.Mesh(bulletGeo, bulletMat);
+            bulletMesh.position.copy(pos);
+            scene.add(bulletMesh);
+            bullets.push({ mesh: bulletMesh, dir: dir, life: 2.0, isMine: isMine });
+        }
+
+        window.addEventListener('mousedown', (e) => {
+            if (e.button === 0 && gameStarted) {
+                isFiring = true;
+                const now = performance.now();
+                if (now - lastFireTime > fireInterval) {
+                    shootGun();
+                    lastFireTime = now;
+                }
+            }
+        });
+        window.addEventListener('mouseup', (e) => { if (e.button === 0) isFiring = false; });
+
+        const instructions = document.getElementById('instructions');
+        const startBtn = document.getElementById('start-btn');
+        const weaponSelect = document.getElementById('weapon-select');
+        const crosshair = document.getElementById('crosshair');
+        const hud = document.getElementById('hud');
+        const bombStatusBar = document.getElementById('bomb-status-bar');
+        const interactionPrompt = document.getElementById('interaction-prompt');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        let gameStarted = false;
+
+        startBtn.addEventListener('click', () => {
+            loadSelectedWeapon(weaponSelect.value);
+            gameStarted = true;
+            instructions.style.display = 'none';
+            crosshair.style.display = 'block';
+            hud.style.display = 'block';
+            bombStatusBar.style.display = 'block';
+            renderer.domElement.requestPointerLock();
+        });
+
+        window.onmousemove = (e) => {
+            if (document.pointerLockElement === renderer.domElement && gameStarted) {
+                player.rotation.y -= e.movementX * 0.002;
+                camera.rotation.x = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, camera.rotation.x - e.movementY * 0.002));
+            }
+        };
+
+        const moveState = { forward: false, backward: false, left: false, right: false };
+        const speed = 10.0;
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyW') moveState.forward = true;
+            if (e.code === 'KeyS') moveState.backward = true;
+            if (e.code === 'KeyA') moveState.left = true;
+            if (e.code === 'KeyD') moveState.right = true;
+            if (e.code === 'KeyE') isInteracting = true;
+        });
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyW') moveState.forward = false;
+            if (e.code === 'KeyS') moveState.backward = false;
+            if (e.code === 'KeyA') moveState.left = false;
+            if (e.code === 'KeyD') moveState.right = false;
+            if (e.code === 'KeyE') {
+                isInteracting = false;
+                actionProgress = 0;
+                progressContainer.style.display = 'none';
+            }
+        });
+
+        function checkCollision(x, z, radius = 0.6) {
+            for (let obs of obstacles) {
+                if (Math.sqrt((x - obs.position.x)**2 + (z - obs.position.z)**2) < (1.5 + radius)) return true;
+            }
+            return false;
+        }
+
+        let prevTime = performance.now();
+        const moveDirection = new THREE.Vector3();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = performance.now();
+            const delta = (time - prevTime) / 1000;
+
+            if (gameStarted && !isGameOver) {
+                if (isFiring) {
+                    if (time - lastFireTime > fireInterval) {
+                        shootGun();
+                        lastFireTime = time;
+                    }
+                }
+
+                moveDirection.set(0, 0, 0);
+                if (moveState.forward) moveDirection.z -= 1;
+                if (moveState.backward) moveDirection.z += 1;
+                if (moveState.left) moveDirection.x -= 1;
+                if (moveState.right) moveDirection.x += 1;
+                moveDirection.normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
+
+                const nextX = player.position.x + moveDirection.x * speed * delta;
+                const nextZ = player.position.z + moveDirection.z * speed * delta;
+                if (!checkCollision(nextX, player.position.z)) player.position.x = nextX;
+                if (!checkCollision(player.position.x, nextZ)) player.position.z = nextZ;
+
+                // 傳送位置給伺服器
+                socket.emit('playerMove', {
+                    x: player.position.x,
+                    y: player.position.y,
+                    z: player.position.z,
+                    ry: player.rotation.y
+                });
+
+                // 子彈碰撞
+                for (let i = bullets.length - 1; i >= 0; i--) {
+                    const b = bullets[i];
+                    b.mesh.position.addScaledVector(b.dir, 45 * delta);
+                    b.life -= delta;
+
+                    if (b.isMine) {
+                        for (let id in otherPlayers) {
+                            const op = otherPlayers[id];
+                            if (b.mesh.position.distanceTo(op.position) < 1.2) {
+                                socket.emit('playerHit', id);
+                                playerKills++;
+                                document.getElementById('kills').innerText = playerKills;
+                                scene.remove(b.mesh);
+                                bullets.splice(i, 1);
+                                break;
+                            }
+                        }
+                    }
+
+                    if (b.life <= 0) {
+                        scene.remove(b.mesh);
+                        bullets.splice(i, 1);
+                    }
+                }
+
+                // 炸彈互動
+                const distToSite = player.position.distanceTo(bombSite.position);
+                if (distToSite < 5.0) {
+                    interactionPrompt.style.display = 'block';
+                    interactionPrompt.innerText = bombPlanted ? "按住 [E] 鍵拆除炸彈" : "按住 [E] 鍵安裝炸彈";
+                    
+                    if (isInteracting) {
+                        progressContainer.style.display = 'block';
+                        actionProgress += delta * 33.3;
+                        progressBar.style.width = actionProgress + '%';
+                        
+                        if (actionProgress >= 100) {
+                            bombPlanted = !bombPlanted;
+                            socket.emit('toggleBomb', bombPlanted);
+                            isInteracting = false;
+                            actionProgress = 0;
+                            progressContainer.style.display = 'none';
+                        }
+                    }
+                } else {
+                    interactionPrompt.style.display = 'none';
+                    progressContainer.style.display = 'none';
+                }
+            }
+
+            prevTime = time;
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
