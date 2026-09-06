@@ -6,104 +6,75 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(__dirname));
+app.use(express.static('public'));
 
 const players = {};
-let bombPlanted = false;
-let teamCounter = 0; // 用於輪流分配隊伍 (Alpha / Bravo)
+let c4State = { planted: false, timer: 30, site: { x: 0, z: -25 } };
+let matchTime = 120;
+
+setInterval(() => {
+    if (c4State.planted) {
+        c4State.timer -= 1;
+        if (c4State.timer <= 0) {
+            io.emit('gameOver', { reason: 'c4_explosion', winner: 'red' });
+            c4State.planted = false;
+        }
+    }
+}, 1000);
 
 io.on('connection', (socket) => {
     console.log(`玩家連線: ${socket.id}`);
 
-    // 自動分配陣營 (輪流分入 Alpha 或 Bravo)
-    const assignedTeam = (teamCounter % 2 === 0) ? 'Alpha' : 'Bravo';
-    teamCounter++;
-
-    players[socket.id] = {
-        x: 0,
-        y: 0.9,
-        z: 0,
-        ry: 0,
-        hp: 100,
-        team: assignedTeam
-    };
-
-    // 告知該玩家他的陣營
-    socket.emit('assignTeam', assignedTeam);
-
-    // 傳送當前所有玩家狀態
-    socket.emit('currentPlayers', players);
-    socket.broadcast.emit('currentPlayers', players);
-
-    // 接收玩家移動
-    socket.on('playerMove', (data) => {
-        if (players[socket.id]) {
-            players[socket.id].x = data.x;
-            players[socket.id].y = data.y;
-            players[socket.id].z = data.z;
-            players[socket.id].ry = data.ry;
-            players[socket.id].team = data.team;
-
-            socket.broadcast.emit('playerMoved', {
-                id: socket.id,
-                x: data.x,
-                y: data.y,
-                z: data.z,
-                ry: data.ry,
-                team: data.team
-            });
-        }
-    });
-
-    // 接收玩家射擊廣播
-    socket.on('playerShoot', (data) => {
-        socket.broadcast.emit('playerShot', {
+    socket.on('joinGame', (data) => {
+        players[socket.id] = {
             id: socket.id,
-            px: data.px, py: data.py, pz: data.pz,
-            dx: data.dx, dy: data.dy, dz: data.dz
-        });
+            name: data.name || `玩家_${socket.id.substring(0, 4)}`,
+            team: data.team || 'red',
+            weapon: data.weapon || 'ak47',
+            x: 0, y: 0.9, z: 0,
+            rotY: 0,
+            hp: 100
+        };
+
+        socket.emit('currentPlayers', players);
+        socket.emit('c4Status', c4State);
+        socket.broadcast.emit('newPlayer', players[socket.id]);
     });
 
-    // 接收命中判定（伺服器確認友軍免傷與扣血）
-    socket.on('playerHit', (targetId) => {
-        const attacker = players[socket.id];
-        const target = players[targetId];
+    socket.on('playerMovement', (movementData) => {
+        if (players[socket.id]) {
+            players[socket.id].x = movementData.x;
+            players[socket.id].y = movementData.y;
+            players[socket.id].z = movementData.z;
+            players[socket.id].rotY = movementData.rotY;
 
-        // 確保雙方存在且不是同一隊（防範友軍傷害）
-        if (attacker && target && attacker.team !== target.team) {
-            target.hp -= 25; // 每槍扣 25 血
-            if (target.hp <= 0) {
-                target.hp = 0;
-                io.to(targetId).emit('die');
-            } else {
-                io.to(targetId).emit('getHit', target.hp);
-            }
+            socket.broadcast.emit('playerMoved', players[socket.id]);
         }
     });
 
-    // 炸彈安裝 / 拆除狀態同步
-    socket.on('toggleBomb', (status) => {
-        bombPlanted = status;
-        io.emit('bombStatus', bombPlanted);
+    socket.on('shoot', (shootData) => {
+        socket.broadcast.emit('playerShot', { id: socket.id, ...shootData });
+    });
 
-        if (bombPlanted) {
-            // 設置 40 秒後若未拆除則炸彈爆炸（Alpha 隊獲勝或 Bravo 隊獲勝判定）
-            setTimeout(() => {
-                if (bombPlanted) {
-                    io.emit('gameOver', '炸彈爆炸！Bravo 隊（叛軍）獲勝！');
-                    bombPlanted = false;
-                }
-            }, 40000);
-        } else {
-            io.emit('gameOver', '炸彈已被 Alpha 隊拆除！特種部隊獲勝！');
+    socket.on('plantC4', () => {
+        if (!c4State.planted) {
+            c4State.planted = true;
+            c4State.timer = 30;
+            io.emit('c4Planted', c4State);
         }
     });
 
-    // 玩家斷線處理
+    socket.on('defuseC4', () => {
+        if (c4State.planted) {
+            c4State.planted = false;
+            io.emit('c4Defused');
+        }
+    });
+
     socket.on('disconnect', () => {
-        console.log(`玩家離線: ${socket.id}`);
+        console.log(`玩家離開: ${socket.id}`);
         delete players[socket.id];
-        io.emit('removePlayer', socket.id);
+        io.emit('playerDisconnected', socket.id);
     });
 });
 
