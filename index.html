@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>決密槍戰 - 多人線上 C4 爆破模式</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; user-select: none; }
+        #instructions {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; text-align: center; font-size: 16px; background: rgba(0, 0, 0, 0.9);
+            padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(255,51,102,0.4);
+            border: 2px solid #ff3366; z-index: 20; max-width: 420px; width: 90%;
+        }
+        #instructions h2 { margin-top: 0; color: #ff3366; letter-spacing: 2px; font-size: 22px; }
+        .setting-group { margin: 10px 0; text-align: left; background: rgba(255, 255, 255, 0.05); padding: 8px; border-radius: 8px; }
+        .setting-group label { display: block; margin-bottom: 5px; color: #00ffcc; font-weight: bold; font-size: 14px; }
+        .setting-group select, .setting-group input { width: 100%; padding: 6px; background: #111; color: white; border: 1px solid #00ffcc; border-radius: 5px; font-size: 14px; box-sizing: border-box; }
+        #start-btn { background: #ff3366; color: #fff; border: none; padding: 10px 20px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
+
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 16px; height: 16px; pointer-events: none; display: none; z-index: 5;
+            transition: opacity 0.15s ease;
+        }
+        #crosshair::before, #crosshair::after { content: ''; position: absolute; background-color: #fff; box-shadow: 0 0 2px #000; }
+        #crosshair::before { top: 7px; left: 0; width: 16px; height: 2px; }
+        #crosshair::after { top: 0; left: 7px; width: 2px; height: 16px; }
+
+        #hud {
+            position: absolute; top: 15px; left: 15px; color: #00ffcc; font-size: 15px; font-weight: bold;
+            background: rgba(0, 0, 0, 0.6); padding: 10px 14px; border-radius: 8px; border: 2px solid #00ffcc;
+            display: none; z-index: 5; line-height: 1.5;
+        }
+        #match-timer {
+            position: absolute; top: 15px; left: 50%; transform: translateX(-50%); color: #ffffff; font-size: 20px; font-weight: bold;
+            background: rgba(0, 0, 0, 0.8); padding: 8px 20px; border-radius: 8px; border: 2px solid #ffffff;
+            display: none; z-index: 5; text-align: center; letter-spacing: 1px;
+        }
+        #c4-status {
+            position: absolute; top: 65px; left: 50%; transform: translateX(-50%); color: #ffaa00; font-size: 15px; font-weight: bold;
+            background: rgba(0, 0, 0, 0.8); padding: 6px 14px; border-radius: 8px; border: 2px solid #ffaa00;
+            display: none; z-index: 5; text-align: center;
+        }
+        #team-hud {
+            position: absolute; top: 15px; right: 15px; color: #ff3366; font-size: 15px; font-weight: bold;
+            background: rgba(0, 0, 0, 0.7); padding: 8px 12px; border-radius: 8px; border: 2px solid #ff3366;
+            display: none; z-index: 5;
+        }
+
+        #freeze-overlay {
+            position: absolute; top: 35%; left: 50%; transform: translate(-50%, -50%);
+            color: #ffaa00; font-size: 28px; font-weight: bold; text-shadow: 0 2px 4px #000;
+            display: none; z-index: 15; text-align: center; pointer-events: none;
+        }
+
+        #damage-flash { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 0, 0, 0); pointer-events: none; transition: background 0.1s ease; z-index: 8; }
+
+        #mobile-controls { position: absolute; bottom: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; z-index: 10; }
+        .touch-btn {
+            position: absolute; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.5);
+            color: white; font-weight: bold; border-radius: 50%; text-align: center; line-height: 60px;
+            font-size: 13px; pointer-events: auto; user-select: none;
+        }
+        #btn-shoot { right: 30px; bottom: 80px; width: 75px; height: 75px; line-height: 75px; background: rgba(255,51,102,0.4); border-color: #ff3366; }
+        #btn-ads { right: 115px; bottom: 110px; width: 55px; height: 55px; line-height: 55px; background: rgba(0,170,255,0.4); border-color: #00aaff; }
+        #btn-jump { right: 115px; bottom: 40px; width: 55px; height: 55px; line-height: 55px; background: rgba(0,255,204,0.3); border-color: #00ffcc; }
+        #btn-action { left: 50%; bottom: 40px; transform: translateX(-50%); width: 90px; height: 45px; line-height: 45px; border-radius: 22px; background: rgba(255,170,0,0.4); border-color: #ffaa00; display: none; font-size: 14px; }
+        
+        #joystick-base {
+            position: absolute; left: 40px; bottom: 40px; width: 120px; height: 120px;
+            background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%; pointer-events: auto; touch-action: none;
+        }
+        #joystick-stick {
+            position: absolute; top: 35px; left: 35px; width: 50px; height: 50px;
+            background: rgba(255,255,255,0.4); border-radius: 50%; pointer-events: none;
+        }
+        #look-touch-area { position: absolute; top: 0; right: 0; width: 50%; height: 60%; pointer-events: auto; touch-action: none; }
+    </style>
+</head>
+<body>
+
+    <div id="crosshair"></div>
+    <div id="damage-flash"></div>
+    <div id="freeze-overlay">等待其他玩家加入...</div>
+    
+    <div id="hud">
+        生命值: <span id="hp">100</span><br>
+        擊殺數: <span id="kills">0</span>
+    </div>
+
+    <div id="match-timer">02:00</div>
+    <div id="c4-status">C4 狀態: 未安裝</div>
+    <div id="team-hud">陣營載入中...</div>
+
+    <div id="mobile-controls">
+        <div id="joystick-base"><div id="joystick-stick"></div></div>
+        <div id="look-touch-area"></div>
+        <div id="btn-shoot" class="touch-btn">射擊</div>
+        <div id="btn-ads" class="touch-btn">開鏡</div>
+        <div id="btn-jump" class="touch-btn">跳躍</div>
+        <div id="btn-action" class="touch-btn">互動</div>
+    </div>
+
+    <div id="instructions">
+        <h2>決密槍戰 - 線上對戰</h2>
+        <div class="setting-group">
+            <label for="player-name">玩家名稱：</label>
+            <input type="text" id="player-name" value="玩家" maxlength="10">
+        </div>
+        <div class="setting-group">
+            <label for="team-select">選擇你的陣營：</label>
+            <select id="team-select">
+                <option value="red">紅隊 (進攻方 - 可安裝 C4)</option>
+                <option value="blue">藍隊 (防守方 - 可拆除 C4)</option>
+            </select>
+        </div>
+        <div class="setting-group">
+            <label for="weapon-select">選擇你的武器：</label>
+            <select id="weapon-select">
+                <option value="ak47">AK-47 (全自動步槍)</option>
+                <option value="g18">G18 (全自動手槍)</option>
+            </select>
+        </div>
+        <p style="font-size:12px; color:#ccc;">空白鍵 = 跳躍 | 滑鼠右鍵 = 開鏡 | 左鍵 = 開火<br>【E 鍵】 = 安裝/拆除 C4</p>
+        <button id="start-btn">進入戰場</button>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+        const socket = io();
+        const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x3388cc);
+        scene.fog = new THREE.FogExp2(0x3388cc, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        document.body.appendChild(renderer.domElement);
+
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const directionalLight = new THREE.DirectionalLight(0xffffee, 1.8);
+        directionalLight.position.set(30, 50, 30);
+        scene.add(directionalLight);
+
+        // 地板與障礙物
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(150, 150), new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 }));
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        const obstacles = [];
+        for (let i = 0; i < 25; i++) {
+            const obs = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 3), new THREE.MeshStandardMaterial({ color: 0x5a6d5e }));
+            const x = (Math.random() - 0.5) * 70, z = (Math.random() - 0.5) * 70;
+            if (Math.abs(x) < 10 && Math.abs(z) < 10) continue;
+            obs.position.set(x, 1.5, z);
+            scene.add(obs);
+            obstacles.push(obs);
+        }
+
+        const bombSitePos = new THREE.Vector3(0, 0, -25);
+        const bombSite = new THREE.Mesh(
+            new THREE.CylinderGeometry(2, 2, 0.1, 32),
+            new THREE.MeshStandardMaterial({ color: 0xff3366, emissive: 0xff3366, emissiveIntensity: 0.5 })
+        );
+        bombSite.position.copy(bombSitePos);
+        bombSite.position.y = 0.05;
+        scene.add(bombSite);
+
+        // 玩家本體
+        const player = new THREE.Mesh(
+            new THREE.BoxGeometry(1, 1.8, 1),
+            new THREE.MeshStandardMaterial({ color: 0x00aaff })
+        );
+        player.position.set(0, 0.9, 0);
+        scene.add(player);
+        camera.position.set(0, 0.7, 0);
+        player.add(camera);
+
+        const gunGroup = new THREE.Group();
+        gunGroup.position.set(0.28, -0.22, -0.55);
+        camera.add(gunGroup);
+
+        const loader = new GLTFLoader();
+        function loadWeapon(type) {
+            while(gunGroup.children.length > 0) gunGroup.remove(gunGroup.children[0]);
+            let url = (type === 'ak47') ? 
+                'https://raw.githubusercontent.com/lucas19yang-a11y/no/main/ak-47__high_poly__pbr__fbx.glb' : 
+                'https://raw.githubusercontent.com/lucas19yang-a11y/-/main/g18.glb';
+
+            loader.load(url, (gltf) => {
+                const model = gltf.scene;
+                model.scale.set(0.8, 0.8, 0.8);
+                model.rotation.y = (type === 'ak47') ? Math.PI / 2 : Math.PI;
+                gunGroup.add(model);
+            }, undefined, () => {
+                gunGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.2, 1.0), new THREE.MeshStandardMaterial({ color: 0x222225 })));
+            });
+        }
+
+        const remotePlayers = {};
+        let playerTeam = 'red';
+        let gameStarted = false;
+        let verticalVelocity = 0, isJumping = false;
+        const gravity = 25.0, jumpForce = 9.0, groundY = 0.9;
+        let c4Planted = false, c4Mesh = null;
+
+        // Socket 監聽
+        socket.on('currentPlayers', (serverPlayers) => {
+            Object.keys(serverPlayers).forEach((id) => {
+                if (id === socket.id) return;
+                addRemotePlayer(serverPlayers[id]);
+            });
+        });
+
+        socket.on('newPlayer', (info) => { addRemotePlayer(info); });
+
+        socket.on('playerMoved', (info) => {
+            if (remotePlayers[info.id]) {
+                remotePlayers[info.id].position.set(info.x, info.y, info.z);
+                remotePlayers[info.id].rotation.y = info.rotY;
+            }
+        });
+
+        socket.on('playerDisconnected', (id) => {
+            if (remotePlayers[id]) {
+                scene.remove(remotePlayers[id]);
+                delete remotePlayers[id];
+            }
+        });
+
+        socket.on('c4Planted', (state) => {
+            c4Planted = true;
+            c4Mesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            c4Mesh.position.copy(bombSitePos);
+            c4Mesh.position.y = 0.1;
+            scene.add(c4Mesh);
+            document.getElementById('c4-status').innerText = "C4 已安裝！";
+        });
+
+        socket.on('c4Defused', () => {
+            c4Planted = false;
+            if (c4Mesh) { scene.remove(c4Mesh); c4Mesh = null; }
+            document.getElementById('c4-status').innerText = "C4 已被拆除！";
+        });
+
+        function addRemotePlayer(info) {
+            const mesh = new THREE.Mesh(
+                new THREE.BoxGeometry(1, 1.8, 1),
+                new THREE.MeshStandardMaterial({ color: info.team === 'red' ? 0xff3366 : 0x00aaff })
+            );
+            mesh.position.set(info.x, info.y, info.z);
+            scene.add(mesh);
+            remotePlayers[info.id] = mesh;
+        }
+
+        // 開始遊戲按鈕
+        document.getElementById('start-btn').addEventListener('click', () => {
+            playerTeam = document.getElementById('team-select').value;
+            const playerName = document.getElementById('player-name').value;
+            const weaponType = document.getElementById('weapon-select').value;
+
+            loadWeapon(weaponType);
+            socket.emit('joinGame', { name: playerName, team: playerTeam, weapon: weaponType });
+
+            gameStarted = true;
+            document.getElementById('instructions').style.display = 'none';
+            document.getElementById('crosshair').style.display = 'block';
+            document.getElementById('hud').style.display = 'block';
+            document.getElementById('match-timer').style.display = 'block';
+            document.getElementById('c4-status').style.display = 'block';
+            document.getElementById('team-hud').style.display = 'block';
+
+            const teamHud = document.getElementById('team-hud');
+            teamHud.innerText = playerTeam === 'red' ? "陣營: 紅隊 (進攻方)" : "陣營: 藍隊 (防守方)";
+            teamHud.style.borderColor = playerTeam === 'red' ? "#ff3366" : "#00ffcc";
+
+            if (isMobile) {
+                document.getElementById('mobile-controls').style.display = 'block';
+                document.getElementById('btn-action').style.display = 'block';
+            } else {
+                renderer.domElement.requestPointerLock();
+            }
+        });
+
+        renderer.domElement.addEventListener('click', () => {
+            if (gameStarted && !isMobile) renderer.domElement.requestPointerLock();
+        });
+
+        window.onmousemove = (e) => {
+            if (document.pointerLockElement === renderer.domElement && gameStarted) {
+                player.rotation.y -= e.movementX * 0.002;
+                camera.rotation.x = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, camera.rotation.x - e.movementY * 0.002));
+            }
+        };
+
+        const moveState = { forward: false, backward: false, left: false, right: false };
+        const speed = 10.0;
+
+        document.addEventListener('keydown', (e) => {
+            if (!gameStarted) return;
+            if (e.code === 'KeyW') moveState.forward = true;
+            if (e.code === 'KeyS') moveState.backward = true;
+            if (e.code === 'KeyA') moveState.left = true;
+            if (e.code === 'KeyD') moveState.right = true;
+            if (e.code === 'Space' && !isJumping) { verticalVelocity = jumpForce; isJumping = true; }
+            if (e.code === 'KeyE') startAction();
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyW') moveState.forward = false;
+            if (e.code === 'KeyS') moveState.backward = false;
+            if (e.code === 'KeyA') moveState.left = false;
+            if (e.code === 'KeyD') moveState.right = false;
+        });
+
+        function startAction() {
+            const dist = player.position.distanceTo(bombSitePos);
+            if (playerTeam === 'red' && !c4Planted && dist <= 3.5) {
+                socket.emit('plantC4');
+            } else if (playerTeam === 'blue' && c4Planted && dist <= 3.5) {
+                socket.emit('defuseC4');
+            }
+        }
+
+        let prevTime = performance.now();
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = performance.now();
+            const delta = (time - prevTime) / 1000;
+
+            if (gameStarted) {
+                if (isJumping) {
+                    verticalVelocity -= gravity * delta;
+                    player.position.y += verticalVelocity * delta;
+                    if (player.position.y <= groundY) {
+                        player.position.y = groundY;
+                        isJumping = false;
+                        verticalVelocity = 0;
+                    }
+                }
+
+                const moveDir = new THREE.Vector3();
+                if (moveState.forward) moveDir.z -= 1;
+                if (moveState.backward) moveDir.z += 1;
+                if (moveState.left) moveDir.x -= 1;
+                if (moveState.right) moveDir.x += 1;
+                moveDir.normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
+
+                player.position.x += moveDir.x * speed * delta;
+                player.position.z += moveDir.z * speed * delta;
+
+                socket.emit('playerMovement', {
+                    x: player.position.x,
+                    y: player.position.y,
+                    z: player.position.z,
+                    rotY: player.rotation.y
+                });
+            }
+
+            prevTime = time;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
