@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>決密槍戰 Online FPS</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050608;color:#fff;font-family:Arial,"Microsoft JhengHei",sans-serif;touch-action:none;user-select:none}
+canvas{display:block}
+#menu{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#08090c,#151821);z-index:30}
+.panel{width:min(440px,92vw);padding:25px;border:1px solid #4d5668;border-radius:16px;background:rgba(8,10,15,.94);box-shadow:0 20px 80px #000}
+h1{margin:0 0 8px;font-size:28px;color:#00e6c3}.sub{color:#aeb6c4;margin-bottom:18px}
+label{display:block;color:#8eeadd;font-weight:bold;margin:12px 0 6px}
+input,select,button{width:100%;padding:12px;border-radius:8px;border:1px solid #596273;background:#11151d;color:#fff;font-size:15px}
+button{cursor:pointer;background:#00a98f;border:0;font-weight:bold}.hint{font-size:12px;color:#8c95a5;line-height:1.6;margin-top:14px}
+#hud{position:absolute;inset:0;z-index:5;pointer-events:none;display:none}
+.box{background:rgba(0,0,0,.58);border:1px solid rgba(255,255,255,.35);border-radius:8px;padding:8px 12px}
+#left{position:absolute;left:14px;top:14px;color:#d7fff7}.hp{font-size:22px}.hpbar{width:210px;height:8px;background:#222;margin-top:5px;border-radius:5px;overflow:hidden}.hpfill{height:100%;background:#00d6a5;width:100%}
+#top{position:absolute;left:50%;top:12px;transform:translateX(-50%);text-align:center;min-width:270px}
+#score{font-size:19px;font-weight:bold}.timer{font-size:22px;margin-top:3px}
+#team{position:absolute;right:14px;top:14px}.red{color:#ff5578}.blue{color:#4db8ff}
+#status{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);text-align:center;font-size:24px;font-weight:bold;text-shadow:0 3px 12px #000;white-space:pre-line}
+#weapon{position:absolute;right:14px;bottom:18px;text-align:right}.ammo{font-size:27px;font-weight:bold}
+#stamina{position:absolute;left:14px;bottom:18px;width:210px;height:8px;background:#222;border-radius:5px;overflow:hidden}.stfill{height:100%;background:#59d8ff;width:100%}
+#scope{position:absolute;inset:0;display:none;pointer-events:none;background:radial-gradient(circle at center,transparent 0 27%,rgba(0,0,0,.92) 28% 100%);z-index:2}#scope:before{content:"";position:absolute;left:50%;top:50%;width:2px;height:70%;background:rgba(255,255,255,.75);transform:translate(-50%,-50%)}#scope:after{content:"";position:absolute;left:50%;top:50%;width:70%;height:2px;background:rgba(255,255,255,.75);transform:translate(-50%,-50%)}#cross{position:absolute;left:50%;top:50%;width:18px;height:18px;transform:translate(-50%,-50%)}#cross:before,#cross:after{content:"";position:absolute;background:#fff;box-shadow:0 0 3px #000}.aim #cross:before,.aim #cross:after{background:#00e6c3}#cross:before{left:8px;top:0;width:2px;height:18px}#cross:after{left:0;top:8px;width:18px;height:2px}
+#hit{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:30px;display:none}.hurt{position:absolute;inset:0;box-shadow:inset 0 0 100px rgba(255,0,0,.8);display:none}
+#board{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,92vw);padding:18px;background:rgba(5,7,11,.94);border:1px solid #6d7788;border-radius:12px;display:none;pointer-events:none}.row{display:grid;grid-template-columns:1fr 80px 80px 80px;gap:8px;padding:7px;border-bottom:1px solid #252b35}
+#mobile{display:none;position:absolute;inset:0;z-index:10;pointer-events:none}.mleft{position:absolute;left:18px;bottom:20px;display:grid;grid-template-columns:55px 55px 55px;gap:5px;pointer-events:auto}.mright{position:absolute;right:18px;bottom:20px;display:flex;gap:8px;pointer-events:auto}.mb{width:62px;height:62px;border-radius:50%;background:rgba(0,0,0,.5);border:1px solid #91a0b6}.fire{width:78px;height:78px;background:rgba(200,20,30,.55)}@media(max-width:800px){#mobile{display:block}#stamina{bottom:100px}#weapon{bottom:100px}.hint{font-size:11px}}
+</style>
+</head>
+<body>
+<div id="menu"><div class="panel">
+<h1>決密槍戰 Online</h1><div class="sub">多人 C4 爆破 FPS</div>
+<label>玩家名稱</label><input id="name" maxlength="16" value="玩家">
+<label>陣營</label><select id="team"><option value="red">紅隊｜進攻方</option><option value="blue">藍隊｜防守方</option></select>
+<label>武器</label><select id="weapon"><option value="ak47">AK-47｜突擊步槍</option><option value="g18">G18｜全自動手槍</option></select>
+<button id="join">進入戰場</button>
+<div class="hint">PC：WASD 移動・Shift 衝刺・Ctrl 蹲下・Space 跳躍・R 換彈・右鍵 ADS・左鍵射擊・E 安裝/拆除 C4・Tab 計分板<br>手機：左側移動，右側拖曳視角，按鈕射擊/ADS/互動。</div>
+</div></div>
+
+<div id="hud">
+<div id="left" class="box"><div class="hp">HP <span id="hp">100</span></div><div class="hpbar"><div id="hpfill" class="hpfill"></div></div><div>Kills <span id="kills">0</span></div></div>
+<div id="top" class="box"><div id="score">RED 0 : 0 BLUE</div><div class="timer" id="timer">02:00</div><div id="c4">C4：未安裝</div></div>
+<div id="team" class="box"></div><div id="status"></div><div id="scope"></div><div id="cross"></div><div id="hit">✕</div><div id="hurt" class="hurt"></div>
+<div id="weapon" class="box"><div id="wname">AK-47</div><div class="ammo"><span id="ammo">30</span> / <span id="reserve">90</span></div><div id="reload"></div></div>
+<div id="stamina"><div id="stfill" class="stfill"></div></div>
+<div id="board"><h2>計分板</h2><div class="row"><b>玩家</b><b>隊伍</b><b>擊殺</b><b>HP</b></div><div id="boardrows"></div></div>
+</div>
+<div id="mobile"><div class="mleft">
+<button class="mb" id="mw">▲</button><button class="mb" id="mup">跳</button><button class="mb" id="ma">◀</button><button class="mb" id="ms">▼</button><button class="mb" id="md">▶</button><button class="mb" id="mc">蹲</button>
+</div><div class="mright"><button class="mb" id="mads">ADS</button><button class="mb" id="mact">E</button><button class="mb fire" id="mfire">開火</button></div></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from "three";
+import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
+
+const socket=io();
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x182638); scene.fog=new THREE.Fog(0x182638,45,130);
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,300);
+const renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setSize(innerWidth,innerHeight); renderer.shadowMap.enabled=true; document.body.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xbfdcff,0x303030,1.5));
+const sun=new THREE.DirectionalLight(0xffffff,2); sun.position.set(30,50,20); sun.castShadow=true; scene.add(sun);
+
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(150,150),new THREE.MeshStandardMaterial({color:0x262a30,roughness:.8}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
+const obstacles=[]; const spawnBlocks=[[-10,-10],[10,10],[-10,10],[10,-10]];
+for(let i=0;i<30;i++){let x=(Math.random()-.5)*120,z=(Math.random()-.5)*100;if(Math.hypot(x,z)<14) {i--;continue}const o=new THREE.Mesh(new THREE.BoxGeometry(3,3,3),new THREE.MeshStandardMaterial({color:0x4e5962}));o.position.set(x,1.5,z);o.castShadow=true;o.receiveShadow=true;scene.add(o);obstacles.push(o)}
+const sitePos=new THREE.Vector3(0,0.05,-35);const site=new THREE.Mesh(new THREE.CylinderGeometry(3,3,.08,32),new THREE.MeshStandardMaterial({color:0xd22b55,emissive:0x501020}));site.position.copy(sitePos);scene.add(site);
+const player=new THREE.Object3D();player.position.set(-10,.9,-10);scene.add(player);player.add(camera);camera.position.set(0,.7,0);
+const gun=new THREE.Group();gun.position.set(.28,-.22,-.55);camera.add(gun);
+const loader=new GLTFLoader();
+const cfg={ak47:{name:"AK-47",mag:30,reserve:90,rate:105,reload:1500},g18:{name:"G18",mag:20,reserve:100,rate:85,reload:1200}};
+let weapon=cfg.ak47, ammo=30,reserve=90,reloading=false,aim=false,firing=false,lastShot=0;
+let hp=100,kills=0,team="red",started=false,canControl=false,dead=false,c4=false;
+let score={red:0,blue:0},remote={},bullets={}; const move={w:false,a:false,s:false,d:false};let sprint=false,crouch=false,stamina=100;
+const ray=new THREE.Raycaster();
+
+function loadWeapon(type){weapon=cfg[type];ammo=weapon.mag;reserve=weapon.reserve;while(gun.children.length)gun.remove(gun.children[0]);loader.load(type==="ak47"?"https://raw.githubusercontent.com/lucas19yang-a11y/no/main/ak-47__high_poly__pbr__fbx.glb":"https://raw.githubusercontent.com/lucas19yang-a11y/-/main/g18.glb",g=>{g.scene.scale.set(.8,.8,.8);g.scene.rotation.y=type==="ak47"?Math.PI/2:Math.PI;gun.add(g.scene)},()=>{},()=>{gun.add(new THREE.Mesh(new THREE.BoxGeometry(.18,.2,1),new THREE.MeshStandardMaterial({color:0x222})))})}
+function ui(){document.querySelector("#ammo").textContent=ammo;document.querySelector("#reserve").textContent=reserve;document.querySelector("#wname").textContent=weapon.name;document.querySelector("#hp").textContent=hp;document.querySelector("#kills").textContent=kills;document.querySelector("#hpfill").style.width=Math.max(0,hp)+"%";document.querySelector("#stfill").style.width=stamina+"%";document.querySelector("#team").textContent=team==="red"?"紅隊｜進攻方":"藍隊｜防守方";document.querySelector("#team").className="box "+(team==="red"?"red":"blue")}
+function status(t){document.querySelector("#status").textContent=t}
+function showHit(){const x=document.querySelector("#hit");x.style.display="block";setTimeout(()=>x.style.display="none",80)}
+function damageFx(){const x=document.querySelector("#hurt");x.style.display="block";setTimeout(()=>x.style.display="none",120)}
+function blocked(x,z){if(Math.abs(x)>73||Math.abs(z)>73)return true;for(const o of obstacles){if(x>o.position.x-2.05&&x<o.position.x+2.05&&z>o.position.z-2.05&&z<o.position.z+2.05)return true}return false}
+function reload(){if(reloading||ammo>=weapon.mag||reserve<=0)return;reloading=true;ui();document.querySelector("#reload").textContent="換彈中...";setTimeout(()=>{let n=Math.min(weapon.mag-ammo,reserve);ammo+=n;reserve-=n;reloading=false;document.querySelector("#reload").textContent="";ui()},weapon.reload)}
+function shoot(){if(!canControl||reloading||ammo<=0){if(ammo<=0)reload();return}ammo--;ui();const dir=new THREE.Vector3();camera.getWorldDirection(dir);const p=new THREE.Vector3();camera.getWorldPosition(p);p.addScaledVector(dir,.8);socket.emit("shoot",{x:p.x,y:p.y,z:p.z,dirX:dir.x,dirY:dir.y,dirZ:dir.z});gun.position.z+=.05;setTimeout(()=>gun.position.z-=.05,50)}
+function action(){if(!canControl)return;const d=player.position.distanceTo(sitePos);if(d>4)return;if(team==="red"&&!c4)socket.emit("plantC4");if(team==="blue"&&c4)socket.emit("defuseC4")}
+document.querySelector("#join").onclick=()=>{team=document.querySelector("#team").value;const wt=document.querySelector("#weapon").value;loadWeapon(wt);socket.emit("joinGame",{name:document.querySelector("#name").value.trim()||"玩家",team,weapon:wt});started=true;canControl=false;document.querySelector("#menu").style.display="none";document.querySelector("#hud").style.display="block";if(!matchMedia("(pointer:coarse)").matches)renderer.domElement.requestPointerLock();ui()};
+document.addEventListener("contextmenu",e=>e.preventDefault());
+document.addEventListener("keydown",e=>{if(!started)return;if(e.code==="KeyW")move.w=true;if(e.code==="KeyA")move.a=true;if(e.code==="KeyS")move.s=true;if(e.code==="KeyD")move.d=true;if(e.code.startsWith("Shift"))sprint=true;if(e.code.startsWith("Control"))crouch=true;if(e.code==="KeyR")reload();if(e.code==="KeyE")action();if(e.code==="Tab"){e.preventDefault();document.querySelector("#board").style.display="block";}});
+document.addEventListener("keyup",e=>{if(e.code==="KeyW")move.w=false;if(e.code==="KeyA")move.a=false;if(e.code==="KeyS")move.s=false;if(e.code==="KeyD")move.d=false;if(e.code.startsWith("Shift"))sprint=false;if(e.code.startsWith("Control"))crouch=false;if(e.code==="Tab")document.querySelector("#board").style.display="none"});
+renderer.domElement.onmousedown=e=>{if(e.button===0&&canControl)firing=true;if(e.button===2&&canControl){aim=!aim;document.body.classList.toggle("aim",aim)}};
+addEventListener("mouseup",e=>{if(e.button===0)firing=false});
+addEventListener("mousemove",e=>{if(document.pointerLockElement===renderer.domElement&&canControl){let s=aim?.0012:.0025;player.rotation.y-=e.movementX*s;camera.rotation.x=THREE.MathUtils.clamp(camera.rotation.x-e.movementY*s,-1.05,1.05)}});
+document.querySelector("#mfire").ontouchstart=e=>{e.preventDefault();firing=true};document.querySelector("#mfire").ontouchend=e=>{e.preventDefault();firing=false};
+document.querySelector("#mads").ontouchstart=e=>{e.preventDefault();aim=!aim;document.body.classList.toggle("aim",aim);document.querySelector("#scope").style.display=aim?"block":"none"};
+document.querySelector("#mact").ontouchstart=e=>{e.preventDefault();action()};
+const bind=(id,k)=>{let b=document.querySelector(id);b.ontouchstart=e=>{e.preventDefault();move[k]=true};b.ontouchend=e=>{e.preventDefault();move[k]=false}};bind("#mw","w");bind("#ma","a");bind("#ms","s");bind("#md","d");
+document.querySelector("#mup").ontouchstart=e=>{e.preventDefault();if(canControl)camera.position.y=.95;setTimeout(()=>camera.position.y=crouch?.45:.7,250)};
+document.querySelector("#mc").ontouchstart=e=>{e.preventDefault();crouch=!crouch};
+
+socket.on("currentPlayers",p=>{for(const id in p)if(id!==socket.id)addRemote(p[id])});
+socket.on("newPlayer",p=>addRemote(p));socket.on("playerMoved",p=>{if(remote[p.id]){remote[p.id].position.set(p.x,p.y,p.z);remote[p.id].rotation.y=p.rotY}});
+socket.on("playerDisconnected",id=>{if(remote[id]){scene.remove(remote[id]);delete remote[id]}});
+function addRemote(p){if(remote[p.id])return;const m=new THREE.Mesh(new THREE.BoxGeometry(1,1.8,1),new THREE.MeshStandardMaterial({color:p.team==="red"?0xd43c5e:0x318dcc}));m.position.set(p.x,p.y,p.z);scene.add(m);remote[p.id]=m}
+socket.on("startCountdown",s=>status("第二位玩家已加入\\n"+s));socket.on("updateCountdown",s=>status(s>0?"遊戲開始倒數："+s:"戰鬥開始！"));socket.on("gameStarted",()=>{canControl=true;status("")});
+socket.on("restartRound",p=>{const me=p[socket.id];if(me){player.position.set(me.x,me.y,me.z);hp=100;dead=false;canControl=true}c4=false;ammo=weapon.mag;reserve=weapon.reserve;ui();status("")});
+socket.on("resetToWaiting",()=>{canControl=false;status("等待第二位玩家加入...")});
+socket.on("updateMatchTimer",t=>{document.querySelector("#timer").textContent=`${String(Math.floor(t/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`});
+socket.on("damaged",v=>{hp=v;damageFx();ui();if(v<=0){dead=true;canControl=false;status("你已被擊殺\\n等待本局結束...")}});
+socket.on("updateKills",v=>{kills=v;ui()});
+socket.on("c4Planted",()=>{c4=true;document.querySelector("#c4").textContent="C4：已安裝｜40 秒"});
+socket.on("c4Defused",()=>{c4=false;document.querySelector("#c4").textContent="C4：已拆除"});
+socket.on("gameOver",d=>{canControl=false;status(`回合結束！\\n${d.winner==="red"?"紅隊":"藍隊"} 勝利\\n${d.reason}`)});
+socket.on("scoreUpdate",s=>{score=s;document.querySelector("#score").textContent=`RED ${s.red} : ${s.blue} BLUE`;renderBoard()});
+socket.on("hitConfirmed",showHit);
+socket.on("updateBullets",bs=>{const seen=new Set;bs.forEach((b,i)=>{const k=b.ownerId+"_"+i;seen.add(k);if(!bullets[k]){const m=new THREE.Mesh(new THREE.SphereGeometry(.07,6,6),new THREE.MeshBasicMaterial({color:0xffff55}));scene.add(m);bullets[k]=m}bullets[k].position.set(b.x,b.y,b.z)});for(const k in bullets)if(!seen.has(k)){scene.remove(bullets[k]);delete bullets[k]}});
+function renderBoard(){const p=[];/* server can later emit full scoreboard; local score remains visible */document.querySelector("#boardrows").innerHTML=`<div class="row"><span>紅隊</span><span></span><span>${score.red}</span><span></span></div><div class="row"><span>藍隊</span><span></span><span>${score.blue}</span><span></span></div>`}
+
+let last=performance.now(),lastSend=0;
+function animate(t){requestAnimationFrame(animate);const dt=Math.min(.05,(t-last)/1000);last=t;
+if(canControl){let dx=0,dz=0;if(move.w)dz-=1;if(move.s)dz+=1;if(move.a)dx-=1;if(move.d)dx+=1;const len=Math.hypot(dx,dz)||1;dx/=len;dz/=len;const wantSprint=sprint&&move.w&&!crouch&&stamina>0;if(wantSprint)stamina=Math.max(0,stamina-30*dt);else stamina=Math.min(100,stamina+20*dt);const sp=crouch?5.5:aim?5.2:wantSprint?15:10;const v=new THREE.Vector3(dx,0,dz).applyAxisAngle(new THREE.Vector3(0,1,0),player.rotation.y);const nx=player.position.x+v.x*sp*dt,nz=player.position.z+v.z*sp*dt;if(!blocked(nx,player.position.z))player.position.x=nx;if(!blocked(player.position.x,nz))player.position.z=nz;camera.position.y+=(crouch?.45:.7-camera.position.y)*Math.min(1,dt*15);
+if(t-lastSend>50){socket.emit("playerMovement",{x:player.position.x,y:player.position.y,z:player.position.z,rotY:player.rotation.y});lastSend=t}
+if(firing&&t-lastShot>weapon.rate){shoot();lastShot=t}}
+ui();gun.position.lerp(aim?new THREE.Vector3(0,-.15,-.4):new THREE.Vector3(.28,-.22,-.55),Math.min(1,dt*12));camera.fov+=((aim?45:75)-camera.fov)*Math.min(1,dt*12);camera.updateProjectionMatrix();renderer.render(scene,camera)}
+requestAnimationFrame(animate);
+addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+</script>
+</body></html>
